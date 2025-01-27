@@ -18,6 +18,7 @@ namespace BiometricsProject
         private DPFP.Capture.Capture Capturer;
         public string FirstName = "";
 
+
         public capture()
         {
             InitializeComponent();
@@ -211,6 +212,8 @@ namespace BiometricsProject
         private void capture_Load(object sender, EventArgs e)
         {
             Init();
+            Start(); // Start capturing fingerprints automatically
+
         }
 
         private void fname_TextChanged(object sender, EventArgs e)

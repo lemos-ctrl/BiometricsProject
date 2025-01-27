@@ -15,14 +15,13 @@ namespace BiometricsProject
 {
     public partial class verify : capture
     {
-
         private DPFP.Template Template;
         private DPFP.Verification.Verification Verificator;
+
         public void Verify(DPFP.Template template)
         {
             Template = template;
             ShowDialog();
-            
         }
 
         protected override void Process(Sample Sample)
@@ -40,54 +39,82 @@ namespace BiometricsProject
 
                 MyAdapter.Fill(dTable);
 
-                MySqlDataReader myReader;
                 MyConn.Open();
-                myReader = MyCommand.ExecuteReader();
-
+                MySqlDataReader myReader = MyCommand.ExecuteReader();
 
                 foreach (DataRow row in dTable.Rows)
                 {
-                    byte[] _img_ = (byte[])row["finger_print"];
-                    MemoryStream ms = new MemoryStream(_img_);  // Load the fingerprint data into the MemoryStream
-                    DPFP.Template Template = new DPFP.Template();
-                    Template.DeSerialize(ms);  // Deserialize from the MemoryStream
+                    // Verify against both left and right fingerprints
+                    byte[] leftFingerprint = (byte[])row["left_index_fingerprint"];
+                    byte[] rightFingerprint = (byte[])row["right_index_fingerprint"];
 
+                    bool isVerified = false;
 
-                    base.Process(Sample);
-
-                    DPFP.FeatureSet features = ExtractFeatures(Sample, DPFP.Processing.DataPurpose.Verification);
-
-                    if (features != null)
+                    // Verify Left Fingerprint
+                    if (leftFingerprint != null)
                     {
-                        DPFP.Verification.Verification.Result result = new DPFP.Verification.Verification.Result();
-                        Verificator.Verify(features, Template, ref result);
-                        UpdateStatus(result.FARAchieved);
-                        if (result.Verified)
+                        MemoryStream leftStream = new MemoryStream(leftFingerprint);
+                        DPFP.Template leftTemplate = new DPFP.Template();
+                        leftTemplate.DeSerialize(leftStream);
+
+                        isVerified = VerifyFingerprint(Sample, leftTemplate);
+
+                        if (isVerified)
                         {
-                            MakeReport("The Fingerprint was verified as " + row["fname"].ToString());
-
+                            MakeReport("The fingerprint was verified as " + row["fname"].ToString());
                             Setfname(row["fname"].ToString());
-
-                            MyConn.Close();
                             break;
                         }
+                    }
 
-                        else
+                    // Verify Right Fingerprint
+                    if (!isVerified && rightFingerprint != null)
+                    {
+                        MemoryStream rightStream = new MemoryStream(rightFingerprint);
+                        DPFP.Template rightTemplate = new DPFP.Template();
+                        rightTemplate.DeSerialize(rightStream);
+
+                        isVerified = VerifyFingerprint(Sample, rightTemplate);
+
+                        if (isVerified)
                         {
-                            MakeReport("The fingerprint was not verified.");
-                            Setfname("NO DATA");
-
-                            MyConn.Close();
+                            MakeReport("The fingerprint was verified as " + row["fname"].ToString());
+                            Setfname(row["fname"].ToString());
+                            break;
                         }
                     }
                 }
 
+                if (!myReader.HasRows)
+                {
+                    MakeReport("The fingerprint was not verified.");
+                    Setfname("NO DATA");
+                }
 
+                MyConn.Close();
             }
             catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
             }
+        }
+
+        private bool VerifyFingerprint(DPFP.Sample sample, DPFP.Template template)
+        {
+            base.Process(sample);
+
+            DPFP.FeatureSet features = ExtractFeatures(sample, DPFP.Processing.DataPurpose.Verification);
+
+            if (features != null)
+            {
+                DPFP.Verification.Verification.Result result = new DPFP.Verification.Verification.Result();
+                Verificator.Verify(features, template, ref result);
+                UpdateStatus(result.FARAchieved);
+
+                return result.Verified;
+            }
+
+            return false;
         }
 
         protected override void Init()
@@ -96,7 +123,6 @@ namespace BiometricsProject
             base.Text = "Fingerprint Verification";
             Verificator = new DPFP.Verification.Verification();
             UpdateStatus(0);
-
         }
 
         private void UpdateStatus(int FAR)
