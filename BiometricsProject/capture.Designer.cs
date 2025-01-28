@@ -52,9 +52,10 @@
             // StatusLabel
             // 
             this.StatusLabel.AutoSize = true;
-            this.StatusLabel.Location = new System.Drawing.Point(12, 428);
+            this.StatusLabel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.StatusLabel.Location = new System.Drawing.Point(19, 342);
             this.StatusLabel.Name = "StatusLabel";
-            this.StatusLabel.Size = new System.Drawing.Size(56, 13);
+            this.StatusLabel.Size = new System.Drawing.Size(58, 15);
             this.StatusLabel.TabIndex = 3;
             this.StatusLabel.Text = "[STATUS]";
             // 
@@ -81,10 +82,11 @@
             // 
             // fname
             // 
-            this.fname.Location = new System.Drawing.Point(330, 339);
+            this.fname.Location = new System.Drawing.Point(12, 370);
             this.fname.Name = "fname";
-            this.fname.Size = new System.Drawing.Size(458, 20);
+            this.fname.Size = new System.Drawing.Size(301, 20);
             this.fname.TabIndex = 4;
+            this.fname.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
             this.fname.TextChanged += new System.EventHandler(this.fname_TextChanged);
             // 
             // StatusText
@@ -99,7 +101,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(807, 465);
+            this.ClientSize = new System.Drawing.Size(324, 405);
             this.Controls.Add(this.start_scan);
             this.Controls.Add(this.fname);
             this.Controls.Add(this.StatusLabel);
@@ -107,6 +109,7 @@
             this.Controls.Add(this.Prompt);
             this.Controls.Add(this.fImage);
             this.Name = "capture";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "capture";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.capture_FormClosing);
             this.Load += new System.EventHandler(this.capture_Load);

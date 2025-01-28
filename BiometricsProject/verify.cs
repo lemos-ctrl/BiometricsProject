@@ -29,73 +29,70 @@ namespace BiometricsProject
             try
             {
                 string MyConnection = "datasource=localhost;username=root;password=";
-                string Query = "SELECT * FROM testdb.members";
-                MySqlConnection MyConn = new MySqlConnection(MyConnection);
-                MySqlCommand MyCommand = new MySqlCommand(Query, MyConn);
+                string Query = "SELECT id, first_name, last_name, left_index_fingerprint, right_index_fingerprint FROM swushsdb.tbl_users";
 
-                MySqlDataAdapter MyAdapter = new MySqlDataAdapter();
-                MyAdapter.SelectCommand = MyCommand;
-                DataTable dTable = new DataTable();
-
-                MyAdapter.Fill(dTable);
-
-                MyConn.Open();
-                MySqlDataReader myReader = MyCommand.ExecuteReader();
-
-                foreach (DataRow row in dTable.Rows)
+                using (MySqlConnection MyConn = new MySqlConnection(MyConnection))
                 {
-                    // Verify against both left and right fingerprints
-                    byte[] leftFingerprint = (byte[])row["left_index_fingerprint"];
-                    byte[] rightFingerprint = (byte[])row["right_index_fingerprint"];
+                    MySqlCommand MyCommand = new MySqlCommand(Query, MyConn);
+                    MySqlDataAdapter MyAdapter = new MySqlDataAdapter(MyCommand);
+                    DataTable dTable = new DataTable();
+                    MyAdapter.Fill(dTable);
 
-                    bool isVerified = false;
+                    MyConn.Open();
+                    MySqlDataReader myReader = MyCommand.ExecuteReader();
 
-                    // Verify Left Fingerprint
-                    if (leftFingerprint != null)
+                    bool fingerprintMatched = false;
+                    string verifiedUser = "";
+
+                    foreach (DataRow row in dTable.Rows)
                     {
-                        MemoryStream leftStream = new MemoryStream(leftFingerprint);
-                        DPFP.Template leftTemplate = new DPFP.Template();
-                        leftTemplate.DeSerialize(leftStream);
+                        byte[] leftFingerprint = row["left_index_fingerprint"] as byte[];
+                        byte[] rightFingerprint = row["right_index_fingerprint"] as byte[];
 
-                        isVerified = VerifyFingerprint(Sample, leftTemplate);
+                        bool isVerified = false;
+
+                        // Verify Left Fingerprint
+                        if (leftFingerprint != null)
+                        {
+                            using (MemoryStream leftStream = new MemoryStream(leftFingerprint))
+                            {
+                                DPFP.Template leftTemplate = new DPFP.Template();
+                                leftTemplate.DeSerialize(leftStream);
+                                isVerified = VerifyFingerprint(Sample, leftTemplate);
+                            }
+                        }
+
+                        // Verify Right Fingerprint
+                        if (!isVerified && rightFingerprint != null)
+                        {
+                            using (MemoryStream rightStream = new MemoryStream(rightFingerprint))
+                            {
+                                DPFP.Template rightTemplate = new DPFP.Template();
+                                rightTemplate.DeSerialize(rightStream);
+                                isVerified = VerifyFingerprint(Sample, rightTemplate);
+                            }
+                        }
 
                         if (isVerified)
                         {
-                            MakeReport("The fingerprint was verified as " + row["fname"].ToString());
-                            Setfname(row["fname"].ToString());
+                            fingerprintMatched = true;
+                            verifiedUser = "The fingerprint was verified as " + row["first_name"].ToString() + " " + row["last_name"].ToString();
+                            MakeReport("The fingerprint was verified as " + verifiedUser);
+                            Setfname(verifiedUser);
                             break;
                         }
                     }
 
-                    // Verify Right Fingerprint
-                    if (!isVerified && rightFingerprint != null)
+                    if (!fingerprintMatched)
                     {
-                        MemoryStream rightStream = new MemoryStream(rightFingerprint);
-                        DPFP.Template rightTemplate = new DPFP.Template();
-                        rightTemplate.DeSerialize(rightStream);
-
-                        isVerified = VerifyFingerprint(Sample, rightTemplate);
-
-                        if (isVerified)
-                        {
-                            MakeReport("The fingerprint was verified as " + row["fname"].ToString());
-                            Setfname(row["fname"].ToString());
-                            break;
-                        }
+                        MakeReport("The fingerprint was not verified.");
+                        Setfname("NO DATA");
                     }
                 }
-
-                if (!myReader.HasRows)
-                {
-                    MakeReport("The fingerprint was not verified.");
-                    Setfname("NO DATA");
-                }
-
-                MyConn.Close();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MessageBox.Show("Error: " + ex.Message, "Verification Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
