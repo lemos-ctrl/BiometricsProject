@@ -36,6 +36,7 @@
             this.Prompt = new System.Windows.Forms.TextBox();
             this.fname = new System.Windows.Forms.TextBox();
             this.StatusText = new System.Windows.Forms.TextBox();
+            this.TopMost = true;
             ((System.ComponentModel.ISupportInitialize)(this.fImage)).BeginInit();
             this.SuspendLayout();
             // 

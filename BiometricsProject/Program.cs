@@ -18,6 +18,7 @@ namespace BiometricsProject
             {
                 // If a user ID is passed as an argument
                 string userId = args[0];
+                //string userId = (args.Length > 0) ? args[0] : "";
 
                 // Check if the command is "verify"
                 if (userId.ToLower() == "verify")

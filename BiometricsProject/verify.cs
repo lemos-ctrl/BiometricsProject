@@ -1,27 +1,37 @@
 ﻿using DPFP;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.IO;
 using System.Windows.Forms;
 using MySql.Data.MySqlClient;
-using System.IO;
 
 namespace BiometricsProject
 {
     public partial class verify : capture
     {
-        private DPFP.Template Template;
         private DPFP.Verification.Verification Verificator;
 
-        public void Verify(DPFP.Template template)
+
+        public verify()
         {
-            Template = template;
-            ShowDialog();
+            InitializeComponent();
+            // Attach the FormClosing event
+            this.Shown += verify_Shown;
+            this.FormClosing += new FormClosingEventHandler(verify_FormClosing);
+        }
+        private void verify_Shown(object sender, EventArgs e)
+        {
+            this.Activate();
+            this.Focus();
+        }
+
+
+        protected override void Init()
+        {
+            base.Init();
+            base.Text = "Fingerprint Verification";
+            Verificator = new DPFP.Verification.Verification();
+            UpdateStatus(0);
         }
 
         protected override void Process(Sample Sample)
@@ -38,12 +48,14 @@ namespace BiometricsProject
                     DataTable dTable = new DataTable();
                     MyAdapter.Fill(dTable);
 
-                    MyConn.Open();
-                    MySqlDataReader myReader = MyCommand.ExecuteReader();
+                    MyConn.Open();  // Open connection (though we’re just reading)
+                    //myReader not strictly needed here if we’re using dTable
+                    //MySqlDataReader myReader = MyCommand.ExecuteReader(); // optional if you prefer
 
                     bool fingerprintMatched = false;
-                    string verifiedUser = "";
+                    string userName = "";
 
+                    // Compare the incoming Sample with each stored fingerprint
                     foreach (DataRow row in dTable.Rows)
                     {
                         byte[] leftFingerprint = row["left_index_fingerprint"] as byte[];
@@ -51,7 +63,7 @@ namespace BiometricsProject
 
                         bool isVerified = false;
 
-                        // Verify Left Fingerprint
+                        // 1) Try the left fingerprint
                         if (leftFingerprint != null)
                         {
                             using (MemoryStream leftStream = new MemoryStream(leftFingerprint))
@@ -62,7 +74,7 @@ namespace BiometricsProject
                             }
                         }
 
-                        // Verify Right Fingerprint
+                        // 2) If not verified yet, try the right fingerprint
                         if (!isVerified && rightFingerprint != null)
                         {
                             using (MemoryStream rightStream = new MemoryStream(rightFingerprint))
@@ -73,58 +85,70 @@ namespace BiometricsProject
                             }
                         }
 
+                        // If matched, record user’s name and stop searching
                         if (isVerified)
                         {
                             fingerprintMatched = true;
-                            verifiedUser = "The fingerprint was verified as " + row["first_name"].ToString() + " " + row["last_name"].ToString();
-                            MakeReport("The fingerprint was verified as " + verifiedUser);
-                            Setfname(verifiedUser);
+                            userName = row["first_name"].ToString() + " " + row["last_name"].ToString();
+                            MakeReport($"The fingerprint was verified as {userName}");
+                            Setfname(userName);
                             break;
                         }
                     }
 
-                    if (!fingerprintMatched)
+                    if (fingerprintMatched)
+                    {
+                        // PRINT ALERT for success
+                        Console.WriteLine($"ALERT! SUCCESS: The fingerprint was verified as {userName}");
+                    }
+                    else
                     {
                         MakeReport("The fingerprint was not verified.");
                         Setfname("NO DATA");
+                        // PRINT ALERT for failed match
+                        Console.WriteLine("ALERT! FAILED: The fingerprint was not verified.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error: " + ex.Message, "Verification Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // PRINT ALERT for error
+                Console.WriteLine($"ALERT:ERROR: {ex.Message}");
+                MessageBox.Show(
+                    "Error: " + ex.Message,
+                    "Verification Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
             }
         }
 
         private bool VerifyFingerprint(DPFP.Sample sample, DPFP.Template template)
         {
+            // We still call the parent’s base.Process(sample) to generate images, logs, etc.
             base.Process(sample);
 
             DPFP.FeatureSet features = ExtractFeatures(sample, DPFP.Processing.DataPurpose.Verification);
-
             if (features != null)
             {
                 DPFP.Verification.Verification.Result result = new DPFP.Verification.Verification.Result();
                 Verificator.Verify(features, template, ref result);
                 UpdateStatus(result.FARAchieved);
-
                 return result.Verified;
             }
-
             return false;
-        }
-
-        protected override void Init()
-        {
-            base.Init();
-            base.Text = "Fingerprint Verification";
-            Verificator = new DPFP.Verification.Verification();
-            UpdateStatus(0);
         }
 
         private void UpdateStatus(int FAR)
         {
-            SetStatus(String.Format("False Accept Rate (FAR) = {0}", FAR));
+            SetStatus($"False Accept Rate (FAR) = {FAR}");
+        }
+
+        // Called when the user closes the form
+        private void verify_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            // PRINT ALERT for closed
+            Console.WriteLine("ALERT:CLOSED: The verification form was closed by the user.");
         }
     }
 }

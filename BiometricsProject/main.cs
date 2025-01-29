@@ -48,7 +48,7 @@ namespace BiometricsProject
         private void verify_btn_Click(object sender, EventArgs e)
         {
             verify VeFrm = new verify();
-            VeFrm.Verify(Template);
+            //VeFrm.Verify(Template);
         }
     }
 }
