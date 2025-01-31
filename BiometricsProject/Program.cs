@@ -16,11 +16,18 @@ namespace BiometricsProject
 
             if (args.Length > 0)
             {
-                // If a user ID is passed as an argument
-                string userId = args[0];
-                //string userId = (args.Length > 0) ? args[0] : "";
+                string command = args[0].ToLower();
 
-                // Check if the command is "verify"
+                // New condition for launching attendance
+                if (command == "attendance")
+                {
+                    Application.Run(new attendance());
+                    return; // Stop further execution
+                }
+
+                // Keep the existing verify and enroll logic untouched
+                string userId = args[0];
+
                 if (userId.ToLower() == "verify")
                 {
                     verify verifyForm = new verify();
@@ -28,7 +35,6 @@ namespace BiometricsProject
                 }
                 else
                 {
-                    // Run the enrollment form with the provided user ID
                     enroll enrollForm = new enroll(userId);
                     enrollForm.OnTemplate += OnTemplate;
                     Application.Run(enrollForm);
@@ -36,8 +42,7 @@ namespace BiometricsProject
             }
             else
             {
-                // Default behavior if no arguments are passed
-                MessageBox.Show("No user ID provided. Please provide a user ID.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("No command provided. Use 'enroll <user_id>', 'verify', or 'attendance'.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
