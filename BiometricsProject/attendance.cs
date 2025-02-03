@@ -224,41 +224,38 @@ namespace BiometricsProject
                 // For testing purposes only:
                 // Uncomment the following line to simulate a specific date/time.
                 // For example, to simulate Friday, February 7, 2025 at 10:00 AM:
-                //DateTime currentTime = new DateTime(2025, 2, 4, 7, 0, 0);//(Year, Month, Day, Hour, Minute, Second)
+                // DateTime currentTime = new DateTime(2025, 2, 4, 7, 0, 0);//(Year, Month, Day, Hour, Minute, Second)
                 // ============================================================
                 // For production, use the actual current time:
                 DateTime currentTime = DateTime.Now;
 
                 // STEP 1: Check if the user is on leave today.
                 string leaveQuery = @"
-            SELECT * 
-            FROM leave_records 
-            WHERE user_id = @UserId 
-              AND leave_status = 'Approved' 
-              AND leave_date = CURDATE()";
+    SELECT * 
+    FROM leave_records 
+    WHERE user_id = @UserId 
+      AND leave_status = 'Approved' 
+      AND leave_date = CURDATE()";
                 using (MySqlCommand leaveCmd = new MySqlCommand(leaveQuery, conn))
                 {
                     leaveCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
                     using (MySqlDataReader leaveReader = leaveCmd.ExecuteReader())
                     {
-                        if (leaveReader.HasRows) // If there are records for leave today
+                        if (leaveReader.HasRows)
                         {
                             MakeReport($"{VerifiedUserName} is on leave today. Attendance action is not allowed.");
-                            return; // Stop further actions
+                            return;
                         }
                     }
                 }
 
                 // STEP 2: Get the teacher's scheduled start time for today.
-                // Determine today's day in the same format as stored in the table (e.g., "Monday")
                 string currentDay = currentTime.ToString("dddd");
-
-                // Query the teacher_daily_schedules table to retrieve the start time for this user and day.
                 string scheduleQuery = @"
-            SELECT start_time 
-            FROM teacher_daily_schedules 
-            WHERE user_id = @UserId AND day = @Day 
-            LIMIT 1";
+    SELECT start_time 
+    FROM teacher_daily_schedules 
+    WHERE user_id = @UserId AND day = @Day 
+    LIMIT 1";
                 TimeSpan scheduledStartTime;
                 using (MySqlCommand scheduleCmd = new MySqlCommand(scheduleQuery, conn))
                 {
@@ -267,12 +264,10 @@ namespace BiometricsProject
                     object result = scheduleCmd.ExecuteScalar();
                     if (result != null && result != DBNull.Value)
                     {
-                        // The start_time column is of type TIME, so we cast it to TimeSpan.
                         scheduledStartTime = (TimeSpan)result;
                     }
                     else
                     {
-                        // No schedule found for today. Prevent attendance action.
                         MakeReport($"{VerifiedUserName} does not have a scheduled class today. Attendance action is not allowed.");
                         return;
                     }
@@ -280,11 +275,11 @@ namespace BiometricsProject
 
                 // STEP 3: Check if attendance has already been completed for today.
                 string completionQuery = @"
-            SELECT * 
-            FROM attendance 
-            WHERE user_id = @UserId 
-              AND attendance_date = CURDATE() 
-              AND attendance_complete = 1";
+    SELECT * 
+    FROM attendance 
+    WHERE user_id = @UserId 
+      AND attendance_date = CURDATE() 
+      AND attendance_complete = 1";
                 using (MySqlCommand completionCmd = new MySqlCommand(completionQuery, conn))
                 {
                     completionCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -300,11 +295,11 @@ namespace BiometricsProject
 
                 // STEP 4: Check if the user is currently checked in.
                 string checkStatusQuery = @"
-            SELECT * 
-            FROM attendance 
-            WHERE user_id = @UserId 
-              AND attendance_date = CURDATE() 
-              AND is_checked_in = 1";
+    SELECT * 
+    FROM attendance 
+    WHERE user_id = @UserId 
+      AND attendance_date = CURDATE() 
+      AND is_checked_in = 1";
                 using (MySqlCommand checkStatusCmd = new MySqlCommand(checkStatusQuery, conn))
                 {
                     checkStatusCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -315,13 +310,13 @@ namespace BiometricsProject
                             // User is checked in, log them out.
                             statusReader.Close();
                             string updateQuery = @"
-                        UPDATE attendance 
-                        SET check_out_time = @CheckOutTime, 
-                            is_checked_in = 0, 
-                            attendance_complete = 1 
-                        WHERE user_id = @UserId 
-                          AND attendance_date = CURDATE() 
-                          AND is_checked_in = 1";
+                UPDATE attendance 
+                SET check_out_time = @CheckOutTime, 
+                    is_checked_in = 0, 
+                    attendance_complete = 1 
+                WHERE user_id = @UserId 
+                  AND attendance_date = CURDATE() 
+                  AND is_checked_in = 1";
                             using (MySqlCommand updateCmd = new MySqlCommand(updateQuery, conn))
                             {
                                 updateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -335,22 +330,24 @@ namespace BiometricsProject
                 }
 
                 // STEP 5: Log the user in.
+                // The INSERT query now includes the minutes_late column.
                 string insertQuery = @"
-            INSERT INTO attendance (
-                user_id, check_in_time, attendance_date, status, is_checked_in, is_late, attendance_complete
-            ) VALUES (
-                @UserId, @CheckInTime, @AttendanceDate, 'Present', 1, @IsLate, 0
-            )";
+    INSERT INTO attendance (
+        user_id, check_in_time, attendance_date, status, is_checked_in, is_late, minutes_late, attendance_complete
+    ) VALUES (
+        @UserId, @CheckInTime, @AttendanceDate, 'Present', 1, @IsLate, @MinutesLate, 0
+    )";
                 using (MySqlCommand insertCmd = new MySqlCommand(insertQuery, conn))
                 {
                     insertCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
                     insertCmd.Parameters.AddWithValue("@CheckInTime", currentTime);
                     insertCmd.Parameters.AddWithValue("@AttendanceDate", currentTime.Date);
 
-                    // STEP 6: Compare the current time to the scheduled start time.
-                    // If the check-in time is later than the scheduled start time, mark as late.
+                    // Compare the current time to the scheduled start time.
                     bool isLate = currentTime.TimeOfDay > scheduledStartTime;
+                    int minutesLate = isLate ? (int)(currentTime.TimeOfDay - scheduledStartTime).TotalMinutes : 0;
                     insertCmd.Parameters.AddWithValue("@IsLate", isLate ? 1 : 0);
+                    insertCmd.Parameters.AddWithValue("@MinutesLate", minutesLate);
 
                     insertCmd.ExecuteNonQuery();
                     MakeReport($"{VerifiedUserName} has been logged in at {currentTime:hh:mm:ss tt}");
@@ -359,14 +356,14 @@ namespace BiometricsProject
                     if (isLate)
                     {
                         string lateInsertQuery = @"
-                    INSERT INTO user_lates (user_id, late_date, notified)
-                    VALUES (@UserId, @LateDate, 0)";
+            INSERT INTO user_lates (user_id, late_date, notified)
+            VALUES (@UserId, @LateDate, 0)";
                         using (MySqlCommand lateCmd = new MySqlCommand(lateInsertQuery, conn))
                         {
                             lateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
                             lateCmd.Parameters.AddWithValue("@LateDate", currentTime.Date);
                             lateCmd.ExecuteNonQuery();
-                            MakeReport($"{VerifiedUserName} has been marked as late for today.");
+                            MakeReport($"{VerifiedUserName} has been marked as late for today by {minutesLate} minutes.");
                         }
                     }
                 }
@@ -376,6 +373,7 @@ namespace BiometricsProject
                 MessageBox.Show(ex.Message);
             }
         }
+
 
 
 
