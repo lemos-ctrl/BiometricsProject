@@ -129,6 +129,9 @@
     <Compile Include="capture.Designer.cs">
       <DependentUpon>capture.cs</DependentUpon>
     </Compile>
+    <Compile Include="ConfirmationForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="enroll.cs">
       <SubType>Form</SubType>
     </Compile>
