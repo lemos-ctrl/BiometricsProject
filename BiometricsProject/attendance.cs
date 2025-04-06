@@ -220,7 +220,7 @@ namespace BiometricsProject
             }
         }
 
-        private void ProcessAttendance(MySqlConnection conn)
+        private async void ProcessAttendance(MySqlConnection conn)
         {
             try
             {
@@ -363,6 +363,8 @@ INSERT INTO attendance (
 
                     insertCmd.ExecuteNonQuery();
                     MakeReport($"{VerifiedUserName} has been logged in at {currentTime:hh:mm:ss tt}");
+                    Application.DoEvents(); // Let the UI process the update
+                    await Task.Delay(100);  // Optional: adds a brief pause
 
                     if (isLate)
                     {
