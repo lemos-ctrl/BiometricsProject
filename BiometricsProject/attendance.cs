@@ -220,7 +220,7 @@ namespace BiometricsProject
             }
         }
 
-        private async void ProcessAttendance(MySqlConnection conn)
+        private void ProcessAttendance(MySqlConnection conn)
         {
             try
             {
