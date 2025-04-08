@@ -132,6 +132,12 @@
     <Compile Include="ConfirmationForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="EarlyCheckInConfirmationForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="EarlyCheckOutConfirmationForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="enroll.cs">
       <SubType>Form</SubType>
     </Compile>

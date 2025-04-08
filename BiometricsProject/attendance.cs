@@ -228,11 +228,11 @@ namespace BiometricsProject
 
                 // Check if user is on leave
                 string leaveQuery = @"
-SELECT * 
-FROM leave_records 
-WHERE user_id = @UserId 
-  AND leave_status = 'Approved' 
-  AND leave_date = CURDATE()";
+            SELECT * 
+            FROM leave_records 
+            WHERE user_id = @UserId 
+            AND leave_status = 'Approved' 
+            AND leave_date = CURDATE()";
                 using (MySqlCommand leaveCmd = new MySqlCommand(leaveQuery, conn))
                 {
                     leaveCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -249,34 +249,38 @@ WHERE user_id = @UserId
                 // Get teacher's schedule
                 string currentDay = currentTime.ToString("dddd");
                 string scheduleQuery = @"
-SELECT start_time 
-FROM teacher_daily_schedules 
-WHERE user_id = @UserId AND day = @Day 
-LIMIT 1";
+            SELECT start_time, end_time 
+            FROM teacher_daily_schedules 
+            WHERE user_id = @UserId AND day = @Day 
+            LIMIT 1";
                 TimeSpan scheduledStartTime;
+                TimeSpan scheduledEndTime;
                 using (MySqlCommand scheduleCmd = new MySqlCommand(scheduleQuery, conn))
                 {
                     scheduleCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
                     scheduleCmd.Parameters.AddWithValue("@Day", currentDay);
-                    object result = scheduleCmd.ExecuteScalar();
-                    if (result != null && result != DBNull.Value)
+                    using (MySqlDataReader scheduleReader = scheduleCmd.ExecuteReader())
                     {
-                        scheduledStartTime = (TimeSpan)result;
-                    }
-                    else
-                    {
-                        MakeReport($"{VerifiedUserName} does not have a scheduled class today. Attendance action is not allowed.");
-                        return;
+                        if (scheduleReader.Read())
+                        {
+                            scheduledStartTime = (TimeSpan)scheduleReader["start_time"];
+                            scheduledEndTime = (TimeSpan)scheduleReader["end_time"];
+                        }
+                        else
+                        {
+                            MakeReport($"{VerifiedUserName} does not have a scheduled class today. Attendance action is not allowed.");
+                            return;
+                        }
                     }
                 }
 
                 // Check if attendance already completed
                 string completionQuery = @"
-SELECT * 
-FROM attendance 
-WHERE user_id = @UserId 
-  AND attendance_date = CURDATE() 
-  AND attendance_complete = 1";
+            SELECT * 
+            FROM attendance 
+            WHERE user_id = @UserId 
+            AND attendance_date = CURDATE() 
+            AND attendance_complete = 1";
                 using (MySqlCommand completionCmd = new MySqlCommand(completionQuery, conn))
                 {
                     completionCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -290,13 +294,13 @@ WHERE user_id = @UserId
                     }
                 }
 
-                // Check if user is checked in
+                // Check if user is checked in (for checkout)
                 string checkStatusQuery = @"
-SELECT * 
-FROM attendance 
-WHERE user_id = @UserId 
-  AND attendance_date = CURDATE() 
-  AND is_checked_in = 1";
+            SELECT * 
+            FROM attendance 
+            WHERE user_id = @UserId 
+            AND attendance_date = CURDATE() 
+            AND is_checked_in = 1";
                 using (MySqlCommand checkStatusCmd = new MySqlCommand(checkStatusQuery, conn))
                 {
                     checkStatusCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -306,36 +310,63 @@ WHERE user_id = @UserId
                         {
                             statusReader.Close();
 
-                            // Show custom modal confirmation dialog
-                            using (var confirmForm = new ConfirmationForm(VerifiedUserName))
+                            // Check for early checkout
+                            bool isEarlyCheckOut = currentTime.TimeOfDay < scheduledEndTime;
+                            TimeSpan earlyCheckoutBy = scheduledEndTime - currentTime.TimeOfDay;
+
+                            if (isEarlyCheckOut)
                             {
-                                // Center the dialog relative to the main form
-                                confirmForm.StartPosition = FormStartPosition.CenterParent;
-
-                                // Show as modal dialog
-                                var result = confirmForm.ShowDialog(this);
-
-                                if (result == DialogResult.Yes)
+                                using (var earlyCheckOutForm = new EarlyCheckOutConfirmationForm(VerifiedUserName, earlyCheckoutBy))
                                 {
-                                    string updateQuery = @"
-UPDATE attendance 
-SET check_out_time = @CheckOutTime, 
-    is_checked_in = 0, 
-    attendance_complete = 1 
-WHERE user_id = @UserId 
-  AND attendance_date = CURDATE() 
-  AND is_checked_in = 1";
-                                    using (MySqlCommand updateCmd = new MySqlCommand(updateQuery, conn))
+                                    if (earlyCheckOutForm.ShowDialog(this) != DialogResult.Yes)
                                     {
-                                        updateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
-                                        updateCmd.Parameters.AddWithValue("@CheckOutTime", currentTime);
-                                        updateCmd.ExecuteNonQuery();
-                                        MakeReport($"{VerifiedUserName} has been logged out at {currentTime:hh:mm:ss tt}");
+                                        MakeReport("Early check-out cancelled.");
+                                        return;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                using (var confirmForm = new ConfirmationForm(VerifiedUserName))
+                                {
+                                    if (confirmForm.ShowDialog(this) != DialogResult.Yes)
+                                    {
+                                        MakeReport("Check out cancelled.");
+                                        return;
+                                    }
+                                }
+                            }
+
+                            // Process checkout
+                            string updateQuery = @"
+                        UPDATE attendance 
+                        SET check_out_time = @CheckOutTime, 
+                            is_checked_in = 0, 
+                            attendance_complete = 1,
+                            is_early_checkout = @IsEarlyCheckout,
+                            early_checkout_minutes = @EarlyCheckoutMinutes
+                        WHERE user_id = @UserId 
+                        AND attendance_date = CURDATE() 
+                        AND is_checked_in = 1";
+                            using (MySqlCommand updateCmd = new MySqlCommand(updateQuery, conn))
+                            {
+                                updateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
+                                updateCmd.Parameters.AddWithValue("@CheckOutTime", currentTime);
+                                updateCmd.Parameters.AddWithValue("@IsEarlyCheckout", isEarlyCheckOut ? 1 : 0);
+                                updateCmd.Parameters.AddWithValue("@EarlyCheckoutMinutes", isEarlyCheckOut ? (int)earlyCheckoutBy.TotalMinutes : 0);
+
+                                int rowsAffected = updateCmd.ExecuteNonQuery();
+                                if (rowsAffected > 0)
+                                {
+                                    MakeReport($"{VerifiedUserName} has been logged out at {currentTime:hh:mm:ss tt}");
+                                    if (isEarlyCheckOut)
+                                    {
+                                        MakeReport($"{VerifiedUserName} checked out {earlyCheckoutBy.TotalMinutes} minutes early.");
                                     }
                                 }
                                 else
                                 {
-                                    MakeReport("Check out cancelled.");
+                                    MakeReport("Failed to update attendance record.");
                                 }
                             }
                             return;
@@ -343,13 +374,33 @@ WHERE user_id = @UserId
                     }
                 }
 
-                // Log the user in
+                // Process check-in (either normal or early)
+                bool isEarlyCheckIn = currentTime.TimeOfDay < scheduledStartTime;
+                TimeSpan earlyCheckinBy = scheduledStartTime - currentTime.TimeOfDay;
+
+                if (isEarlyCheckIn)
+                {
+                    using (var earlyConfirmForm = new EarlyCheckInConfirmationForm(VerifiedUserName, earlyCheckinBy))
+                    {
+                        if (earlyConfirmForm.ShowDialog(this) != DialogResult.Yes)
+                        {
+                            MakeReport("Early Clock-in cancelled.");
+                            return;
+                        }
+                    }
+                }
+
+                // Insert check-in record
                 string insertQuery = @"
-INSERT INTO attendance (
-    user_id, check_in_time, attendance_date, status, is_checked_in, is_late, minutes_late, attendance_complete
-) VALUES (
-    @UserId, @CheckInTime, @AttendanceDate, 'Present', 1, @IsLate, @MinutesLate, 0
-)";
+            INSERT INTO attendance (
+                user_id, check_in_time, attendance_date, status, 
+                is_checked_in, is_late, minutes_late, 
+                is_early_checkin, early_checkin_minutes, attendance_complete
+            ) VALUES (
+                @UserId, @CheckInTime, @AttendanceDate, 'Present', 
+                1, @IsLate, @MinutesLate, 
+                @IsEarlyCheckin, @EarlyCheckinMinutes, 0
+            )";
                 using (MySqlCommand insertCmd = new MySqlCommand(insertQuery, conn))
                 {
                     insertCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -360,28 +411,50 @@ INSERT INTO attendance (
                     int minutesLate = isLate ? (int)(currentTime.TimeOfDay - scheduledStartTime).TotalMinutes : 0;
                     insertCmd.Parameters.AddWithValue("@IsLate", isLate ? 1 : 0);
                     insertCmd.Parameters.AddWithValue("@MinutesLate", minutesLate);
+                    insertCmd.Parameters.AddWithValue("@IsEarlyCheckin", isEarlyCheckIn ? 1 : 0);
+                    insertCmd.Parameters.AddWithValue("@EarlyCheckinMinutes", isEarlyCheckIn ? (int)earlyCheckinBy.TotalMinutes : 0);
 
-                    insertCmd.ExecuteNonQuery();
-                    MakeReport($"{VerifiedUserName} has been logged in at {currentTime:hh:mm:ss tt}");
-
-                    if (isLate)
+                    int rowsAffected = insertCmd.ExecuteNonQuery();
+                    if (rowsAffected > 0)
                     {
-                        string lateInsertQuery = @"
-INSERT INTO user_lates (user_id, late_date, notified)
-VALUES (@UserId, @LateDate, 0)";
-                        using (MySqlCommand lateCmd = new MySqlCommand(lateInsertQuery, conn))
+                        MakeReport($"{VerifiedUserName} has been logged in at {currentTime:hh:mm:ss tt}");
+
+                        if (isLate)
                         {
-                            lateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
-                            lateCmd.Parameters.AddWithValue("@LateDate", currentTime.Date);
-                            lateCmd.ExecuteNonQuery();
-                            MakeReport($"{VerifiedUserName} has been marked as late for today by {minutesLate} minutes.");
+                            string lateInsertQuery = @"
+                        INSERT INTO user_lates (user_id, late_date, notified)
+                        VALUES (@UserId, @LateDate, 0)";
+                            using (MySqlCommand lateCmd = new MySqlCommand(lateInsertQuery, conn))
+                            {
+                                lateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
+                                lateCmd.Parameters.AddWithValue("@LateDate", currentTime.Date);
+                                lateCmd.ExecuteNonQuery();
+                                MakeReport($"{VerifiedUserName} has been marked as late for today by {minutesLate} minutes.");
+                            }
                         }
+                        else if (isEarlyCheckIn)
+                        {
+                            MakeReport($"{VerifiedUserName} checked in {earlyCheckinBy.TotalMinutes} minutes early.");
+                        }
+                    }
+                    else
+                    {
+                        MakeReport("Failed to record attendance. Please try again.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                MakeReport($"Error processing attendance: {ex.Message}");
+                MessageBox.Show($"Error: {ex.Message}", "Attendance Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // Ensure connection is closed if we're done with it
+                if (conn.State == ConnectionState.Open)
+                {
+                    conn.Close();
+                }
             }
         }
 
