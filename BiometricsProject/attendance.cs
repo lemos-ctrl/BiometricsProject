@@ -249,12 +249,15 @@ namespace BiometricsProject
                 // Get teacher's schedule
                 string currentDay = currentTime.ToString("dddd");
                 string scheduleQuery = @"
-            SELECT start_time, end_time 
-            FROM teacher_daily_schedules 
-            WHERE user_id = @UserId AND day = @Day 
-            LIMIT 1";
-                TimeSpan scheduledStartTime;
-                TimeSpan scheduledEndTime;
+    SELECT start_time, end_time 
+    FROM teacher_daily_schedules 
+    WHERE user_id = @UserId AND day = @Day 
+    LIMIT 1";
+
+                bool hasSchedule = false;
+                TimeSpan scheduledStartTime = TimeSpan.Zero;
+                TimeSpan scheduledEndTime = TimeSpan.Zero;
+
                 using (MySqlCommand scheduleCmd = new MySqlCommand(scheduleQuery, conn))
                 {
                     scheduleCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
@@ -263,15 +266,20 @@ namespace BiometricsProject
                     {
                         if (scheduleReader.Read())
                         {
-                            scheduledStartTime = (TimeSpan)scheduleReader["start_time"];
-                            scheduledEndTime = (TimeSpan)scheduleReader["end_time"];
-                        }
-                        else
-                        {
-                            MakeReport($"{VerifiedUserName} does not have a scheduled class today. Attendance action is not allowed.");
-                            return;
+                            // Safely parse the time values
+                            if (TimeSpan.TryParse(scheduleReader["start_time"].ToString(), out scheduledStartTime) &&
+                                TimeSpan.TryParse(scheduleReader["end_time"].ToString(), out scheduledEndTime))
+                            {
+                                hasSchedule = true;
+                            }
                         }
                     }
+                }
+
+                if (!hasSchedule)
+                {
+                    MakeReport($"{VerifiedUserName} does not have a scheduled class today. Attendance action is not allowed.");
+                    return;
                 }
 
                 // Check if attendance already completed
@@ -422,12 +430,13 @@ namespace BiometricsProject
                         if (isLate)
                         {
                             string lateInsertQuery = @"
-                        INSERT INTO user_lates (user_id, late_date, notified)
-                        VALUES (@UserId, @LateDate, 0)";
+    INSERT INTO user_lates (user_id, late_date, late_minutes, notified)
+    VALUES (@UserId, @LateDate, @LateMinutes, 0)";
                             using (MySqlCommand lateCmd = new MySqlCommand(lateInsertQuery, conn))
                             {
                                 lateCmd.Parameters.AddWithValue("@UserId", VerifiedUserId);
                                 lateCmd.Parameters.AddWithValue("@LateDate", currentTime.Date);
+                                lateCmd.Parameters.AddWithValue("@LateMinutes", minutesLate);
                                 lateCmd.ExecuteNonQuery();
                                 MakeReport($"{VerifiedUserName} has been marked as late for today by {minutesLate} minutes.");
                             }
