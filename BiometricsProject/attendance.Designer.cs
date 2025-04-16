@@ -10,7 +10,7 @@ namespace BiometricsProject
         private System.Windows.Forms.Label lblScanMessage;
         private System.Windows.Forms.Label lblStatus;
         private System.Windows.Forms.Label lblTime;
-        private System.Windows.Forms.Timer timer;
+        private System.Windows.Forms.Timer countdownTimer;
         private System.Windows.Forms.Button btnExit;
 
         protected override void Dispose(bool disposing)
@@ -32,9 +32,10 @@ namespace BiometricsProject
             this.lblScanMessage = new System.Windows.Forms.Label();
             this.lblStatus = new System.Windows.Forms.Label();
             this.lblTime = new System.Windows.Forms.Label();
-            this.timer = new System.Windows.Forms.Timer(this.components);
+            this.countdownTimer = new System.Windows.Forms.Timer(this.components);
             this.btnExit = new System.Windows.Forms.Button();
             this.picFingerprint = new System.Windows.Forms.PictureBox();
+            this.lblCountdown = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.picFingerprint)).BeginInit();
             this.SuspendLayout();
             // 
@@ -56,11 +57,11 @@ namespace BiometricsProject
             this.lblScanMessage.BackColor = System.Drawing.Color.Transparent;
             this.lblScanMessage.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblScanMessage.ForeColor = System.Drawing.Color.Black;
-            this.lblScanMessage.Location = new System.Drawing.Point(392, 237);
+            this.lblScanMessage.Location = new System.Drawing.Point(357, 232);
             this.lblScanMessage.Name = "lblScanMessage";
-            this.lblScanMessage.Size = new System.Drawing.Size(267, 21);
+            this.lblScanMessage.Size = new System.Drawing.Size(358, 21);
             this.lblScanMessage.TabIndex = 2;
-            this.lblScanMessage.Text = "Please scan your fingerprint to log in.";
+            this.lblScanMessage.Text = "Please scan your fingerprint to Clock-in/Clock-out.";
             // 
             // lblStatus
             // 
@@ -89,11 +90,11 @@ namespace BiometricsProject
             this.lblTime.TabIndex = 6;
             this.lblTime.Text = "Time: 02:41:20 PM";
             // 
-            // timer
+            // countdownTimer
             // 
-            this.timer.Enabled = true;
-            this.timer.Interval = 1000;
-            this.timer.Tick += new System.EventHandler(this.timer_Tick);
+            this.countdownTimer.Enabled = true;
+            this.countdownTimer.Interval = 1000;
+            this.countdownTimer.Tick += new System.EventHandler(this.timer_Tick);
             // 
             // btnExit
             // 
@@ -116,12 +117,29 @@ namespace BiometricsProject
             this.picFingerprint.TabIndex = 1;
             this.picFingerprint.TabStop = false;
             // 
+            // lblCountdown
+            // 
+            this.lblCountdown.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblCountdown.AutoSize = true;
+            this.lblCountdown.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
+            this.lblCountdown.ForeColor = System.Drawing.SystemColors.MenuHighlight;
+            this.lblCountdown.Location = new System.Drawing.Point(338, 284);
+            this.lblCountdown.Name = "lblCountdown";
+            this.lblCountdown.Size = new System.Drawing.Size(392, 21);
+            this.lblCountdown.TabIndex = 8;
+            this.lblCountdown.Text = "Please wait for: 10 seconds before scanning again.";
+            this.lblCountdown.TextAlign = System.Drawing.ContentAlignment.TopCenter;
+            this.lblCountdown.Visible = false;
+            // 
             // attendance
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Stretch;
             this.ClientSize = new System.Drawing.Size(1060, 483);
+            this.Controls.Add(this.lblCountdown);
             this.Controls.Add(this.lblTitle);
             this.Controls.Add(this.picFingerprint);
             this.Controls.Add(this.lblScanMessage);
@@ -173,5 +191,6 @@ namespace BiometricsProject
             btnExit.Top = lblTime.Bottom + 10;
         }
 
+        private System.Windows.Forms.Label lblCountdown;
     }
 }
