@@ -8,6 +8,7 @@ using MySql.Data.MySqlClient;
 using System.Threading.Tasks;
 using System.Drawing;
 using System.Diagnostics;
+using System.Threading;
 
 namespace BiometricsProject
 {
@@ -24,8 +25,22 @@ namespace BiometricsProject
         public attendance()
         {
             InitializeComponent();
+            this.FormClosing += attendance_FormClosing;
             Init();
             StartCapture();
+        }
+
+        private void attendance_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            // Stop and dispose the countdown timer
+            if (countdownTimer != null)
+            {
+                countdownTimer.Stop();
+                countdownTimer.Dispose();
+            }
+
+            // Also stop the fingerprint capture if needed
+            StopCapture();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -91,10 +106,28 @@ namespace BiometricsProject
             Process(Sample);
         }
 
+        private CancellationTokenSource fingerGoneCancellation;
         public async void OnFingerGone(object Capture, string ReaderSerialNumber)
         {
-            await Task.Delay(3000);
-            ShowMessage("The finger was removed from the reader.", MessageType.Info);
+            if (!isCountdownActive)
+            {
+                // Cancel any previous delay
+                fingerGoneCancellation?.Cancel();
+                fingerGoneCancellation = new CancellationTokenSource();
+
+                try
+                {
+                    await Task.Delay(3000, fingerGoneCancellation.Token);
+                    if (!isCountdownActive) // Check again after delay
+                    {
+                        ShowMessage("The finger was removed from the reader.", MessageType.Info);
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                    // This is expected when cancelled
+                }
+            }
         }
 
         public void OnFingerTouch(object Capture, string ReaderSerialNumber)
@@ -135,15 +168,87 @@ namespace BiometricsProject
             });
         }
 
+        private bool isCountdownActive = false;
+
+        private void StartCountdown(int seconds)
+        {
+            // Cancel any pending "finger gone" message
+            fingerGoneCancellation?.Cancel();
+
+            // Rest of your countdown code...
+            UpdateCountdownDisplay(seconds);
+            lblCountdown.Invoke((MethodInvoker)(() =>
+            {
+                lblCountdown.Visible = true;
+            }));
+
+            countdownTimer.Interval = 1000;
+            countdownTimer.Tick -= CountdownTimer_Tick;
+            countdownTimer.Tick += CountdownTimer_Tick;
+            countdownTimer.Start();
+        }
+
+        private void CountdownTimer_Tick(object sender, EventArgs e)
+        {
+            // Get current remaining time
+            int remainingSeconds = 11 - (int)(DateTime.Now - lastVerificationTime).TotalSeconds;
+
+            if (remainingSeconds <= 0)
+            {
+                // Countdown finished
+                countdownTimer.Stop();
+                isCountdownActive = false;
+
+                lblCountdown.Invoke((MethodInvoker)(() =>
+                {
+                    lblCountdown.Visible = false;
+                }));
+
+                ShowMessage("Ready to scan again.", MessageType.Info);
+            }
+            else
+            {
+                // Update display
+                UpdateCountdownDisplay(remainingSeconds);
+            }
+        }
+
+        private void UpdateCountdownDisplay(int seconds)
+        {
+            if (lblCountdown.InvokeRequired)
+            {
+                lblCountdown.Invoke((MethodInvoker)(() =>
+                {
+                    lblCountdown.Text = $"Please wait for: {seconds} seconds before scanning again.";
+                    lblCountdown.ForeColor = seconds <= 3 ? Color.Red : Color.Orange;
+                }));
+            }
+            else
+            {
+                lblCountdown.Text = $"Please wait for: {seconds} seconds before scanning again.";
+                lblCountdown.ForeColor = seconds <= 3 ? Color.Red : Color.Orange;
+            }
+        }
+
         private async void VerifyFingerprint(DPFP.FeatureSet features)
         {
             try
             {
                 if ((DateTime.Now - lastVerificationTime).TotalSeconds < 10 && IsVerified)
                 {
-                    ShowMessage("Please wait before scanning again. Minimum interval: 10 seconds.", MessageType.Warning);
+                    int remainingSeconds = 11 - (int)(DateTime.Now - lastVerificationTime).TotalSeconds;
+                    isCountdownActive = true;
+
+                    // Start the visual countdown
+                    StartCountdown(remainingSeconds);
+
+                    //ShowMessage($"Please wait {remainingSeconds} seconds before scanning again.", MessageType.Warning);
+                    ShowMessage($" ", MessageType.Warning);
                     return;
                 }
+
+                // Reset the countdown flag when a new verification starts
+                isCountdownActive = false;
 
                 string MyConnection = "datasource=localhost;username=root;password=;database=swushsdb";
                 using (MySqlConnection MyConn = new MySqlConnection(MyConnection))
@@ -392,14 +497,14 @@ namespace BiometricsProject
             if (isEarlyCheckOut)
             {
                 var dialogResult = MessageBox.Show(
-                    $"{userName} is checking out {earlyCheckoutBy.TotalMinutes} minutes early. Continue?",
-                    "Early Check-Out",
+                    $"{userName} is clocking out {earlyCheckoutBy.TotalMinutes} minutes early. Continue?",
+                    "Early Clock-Out",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question);
 
                 if (dialogResult != DialogResult.Yes)
                 {
-                    ShowMessage("Early check-out cancelled.", MessageType.Info);
+                    ShowMessage("Early clock-out cancelled.", MessageType.Info);
                     return;
                 }
             }
@@ -423,7 +528,7 @@ namespace BiometricsProject
 
                 if (cmd.ExecuteNonQuery() > 0)
                 {
-                    string message = $"{userName} checked out at {currentTime:hh:mm tt}";
+                    string message = $"{userName} clocked out at {currentTime:hh:mm tt}";
                     if (isEarlyCheckOut)
                     {
                         message += $"\n(Early by {earlyCheckoutBy.TotalMinutes} minutes)";
@@ -447,14 +552,14 @@ namespace BiometricsProject
             if (isEarlyCheckIn)
             {
                 var dialogResult = MessageBox.Show(
-                    $"{userName} is checking in {earlyCheckinBy.TotalMinutes} minutes early. Continue?",
-                    "Early Check-In",
+                    $"{userName} is clocking in {earlyCheckinBy.TotalMinutes} minutes early. Continue?",
+                    "Early Clock-In",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question);
 
                 if (dialogResult != DialogResult.Yes)
                 {
-                    ShowMessage("Early check-in cancelled.", MessageType.Info);
+                    ShowMessage("Early clock-in cancelled.", MessageType.Info);
                     return;
                 }
             }
@@ -468,7 +573,7 @@ namespace BiometricsProject
 
                 if (dialogResult != DialogResult.Yes)
                 {
-                    ShowMessage("Check-in cancelled.", MessageType.Info);
+                    ShowMessage("Clock-in cancelled.", MessageType.Info);
                     return;
                 }
             }
