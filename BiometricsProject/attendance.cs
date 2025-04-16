@@ -139,9 +139,9 @@ namespace BiometricsProject
         {
             try
             {
-                if ((DateTime.Now - lastVerificationTime).TotalSeconds < 5 && IsVerified)
+                if ((DateTime.Now - lastVerificationTime).TotalSeconds < 10 && IsVerified)
                 {
-                    ShowMessage("Please wait before scanning again. Minimum interval: 5 seconds.", MessageType.Warning);
+                    ShowMessage("Please wait before scanning again. Minimum interval: 10 seconds.", MessageType.Warning);
                     return;
                 }
 
