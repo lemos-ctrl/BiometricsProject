@@ -330,7 +330,6 @@ namespace BiometricsProject
         {
             try
             {
-
                 if (conn.State != ConnectionState.Open)
                 {
                     conn.Open();
@@ -347,7 +346,10 @@ namespace BiometricsProject
                     return;
                 }
 
-                // 2. Get teacher's schedule (custom first, then regular)
+                // 2. Get existing attendance record
+                var existingAttendance = GetExistingAttendance(conn, VerifiedUserId);
+
+                // 3. Get teacher's schedule
                 var schedule = GetTeacherSchedule(conn, VerifiedUserId, currentDate, currentDay);
                 if (!schedule.HasSchedule)
                 {
@@ -355,22 +357,47 @@ namespace BiometricsProject
                     return;
                 }
 
-                // 3. Check if attendance already completed
-                if (IsAttendanceCompleted(conn, VerifiedUserId))
+                // 4. Check attendance state and process accordingly
+                if (existingAttendance != null)
                 {
-                    ShowMessage($"{VerifiedUserName} already completed attendance today.", MessageType.Info);
-                    return;
+                    // If manual attendance exists
+                    if (existingAttendance.IsManual)
+                    {
+                        // For manual clock-in records
+                        if (existingAttendance.CheckInTime != null && existingAttendance.CheckOutTime == null)
+                        {
+                            // Show confirmation modal for clock-out attempt
+                            if (ShowConfirmationModal(
+                                $"{VerifiedUserName} has been manually clocked-in at {existingAttendance.CheckInTime.Value.ToString("hh:mm tt")}.",
+                                "Are you sure you want to clock out via system?",
+                                "Clock Out Confirmation"))
+                            {
+                                ProcessCheckOut(conn, VerifiedUserId, VerifiedUserName, currentTime, schedule.EndTime);
+                            }
+                            return;
+                        }
+
+                        // For complete manual records
+                        ShowMessage($"{VerifiedUserName} has been manually marked. Please contact admin if this is incorrect.", MessageType.Warning);
+                        return;
+                    }
+
+                    // Normal biometric flow
+                    if (existingAttendance.CheckInTime != null && existingAttendance.CheckOutTime == null)
+                    {
+                        ProcessCheckOut(conn, VerifiedUserId, VerifiedUserName, currentTime, schedule.EndTime);
+                        return;
+                    }
+
+                    if (existingAttendance.CheckOutTime != null)
+                    {
+                        ShowMessage($"{VerifiedUserName} has already completed attendance today.", MessageType.Info);
+                        return;
+                    }
                 }
 
-                // 4. Process check-in or check-out
-                if (IsCheckedIn(conn, VerifiedUserId))
-                {
-                    ProcessCheckOut(conn, VerifiedUserId, VerifiedUserName, currentTime, schedule.EndTime);
-                }
-                else
-                {
-                    ProcessCheckIn(conn, VerifiedUserId, VerifiedUserName, currentTime, schedule.StartTime, schedule.EndTime);
-                }
+                // 5. If no existing record or not checked in yet, process check-in
+                ProcessCheckIn(conn, VerifiedUserId, VerifiedUserName, currentTime, schedule.StartTime, schedule.EndTime);
             }
             catch (Exception ex)
             {
@@ -383,6 +410,62 @@ namespace BiometricsProject
                     conn.Close();
                 }
             }
+        }
+
+        // Add this helper method for modal confirmation
+        private bool ShowConfirmationModal(string message, string question, string title)
+        {
+            // Implementation depends on your UI framework
+            // This would typically show a modal dialog with Yes/No buttons
+            // Return true if user confirms, false if cancels
+            // Example implementation:
+            var result = MessageBox.Show($"{message}\n\n{question}", title,
+                                       MessageBoxButtons.YesNo,
+                                       MessageBoxIcon.Question);
+            return result == DialogResult.Yes;
+        }
+
+
+        private AttendanceRecord GetExistingAttendance(MySqlConnection conn, int userId)
+        {
+            string query = @"SELECT 
+            check_in_time, 
+            check_out_time, 
+            attendance_complete, 
+            CASE WHEN check_in_time IS NOT NULL AND check_out_time IS NULL THEN 1 ELSE 0 END as is_checked_in,
+            CASE WHEN check_in_manual = 1 OR check_out_manual = 1 THEN 1 ELSE 0 END as is_manual
+            FROM attendance 
+            WHERE user_id = @UserId 
+            AND attendance_date = CURDATE()";
+
+            using (var cmd = new MySqlCommand(query, conn))
+            {
+                cmd.Parameters.AddWithValue("@UserId", userId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        return new AttendanceRecord
+                        {
+                            CheckInTime = reader["check_in_time"] != DBNull.Value ? (DateTime?)reader["check_in_time"] : null,
+                            CheckOutTime = reader["check_out_time"] != DBNull.Value ? (DateTime?)reader["check_out_time"] : null,
+                            AttendanceComplete = reader["attendance_complete"] != DBNull.Value && Convert.ToBoolean(reader["attendance_complete"]),
+                            IsCheckedIn = reader["is_checked_in"] != DBNull.Value && Convert.ToBoolean(reader["is_checked_in"]),
+                            IsManual = reader["is_manual"] != DBNull.Value && Convert.ToBoolean(reader["is_manual"])
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        private class AttendanceRecord
+        {
+            public DateTime? CheckInTime { get; set; }
+            public DateTime? CheckOutTime { get; set; }
+            public bool AttendanceComplete { get; set; }
+            public bool IsCheckedIn { get; set; }
+            public bool IsManual { get; set; }
         }
 
         // Helper Methods
@@ -509,15 +592,17 @@ namespace BiometricsProject
                 }
             }
 
+            // Modified query to be more flexible with conditions
             string query = @"UPDATE attendance 
-                           SET check_out_time = @CheckOutTime, 
-                               is_checked_in = 0, 
-                               attendance_complete = 1,
-                               is_early_checkout = @IsEarlyCheckout,
-                               early_checkout_minutes = @EarlyCheckoutMinutes
-                           WHERE user_id = @UserId 
-                           AND attendance_date = CURDATE() 
-                           AND is_checked_in = 1";
+                   SET check_out_time = @CheckOutTime, 
+                       is_checked_in = 0, 
+                       attendance_complete = 1,
+                       is_early_checkout = @IsEarlyCheckout,
+                       early_checkout_minutes = @EarlyCheckoutMinutes,
+                       check_out_manual = 0
+                   WHERE user_id = @UserId 
+                   AND attendance_date = CURDATE() 
+                   AND (check_out_time IS NULL OR check_out_time = '')";
 
             using (var cmd = new MySqlCommand(query, conn))
             {
@@ -526,7 +611,9 @@ namespace BiometricsProject
                 cmd.Parameters.AddWithValue("@IsEarlyCheckout", isEarlyCheckOut ? 1 : 0);
                 cmd.Parameters.AddWithValue("@EarlyCheckoutMinutes", isEarlyCheckOut ? (int)earlyCheckoutBy.TotalMinutes : 0);
 
-                if (cmd.ExecuteNonQuery() > 0)
+                int rowsAffected = cmd.ExecuteNonQuery();
+
+                if (rowsAffected > 0)
                 {
                     string message = $"{userName} clocked out at {currentTime:hh:mm tt}";
                     if (isEarlyCheckOut)
@@ -537,7 +624,24 @@ namespace BiometricsProject
                 }
                 else
                 {
-                    ShowMessage("Failed to update attendance record.", MessageType.Error);
+                    // More detailed error message
+                    string errorQuery = @"SELECT check_out_time FROM attendance 
+                                WHERE user_id = @UserId 
+                                AND attendance_date = CURDATE()";
+                    using (var errorCmd = new MySqlCommand(errorQuery, conn))
+                    {
+                        errorCmd.Parameters.AddWithValue("@UserId", userId);
+                        object result = errorCmd.ExecuteScalar();
+
+                        if (result != null && result != DBNull.Value)
+                        {
+                            ShowMessage($"{userName} has already clocked out at {Convert.ToDateTime(result):hh:mm tt}", MessageType.Warning);
+                        }
+                        else
+                        {
+                            ShowMessage("No matching attendance record found to update. Please clock in first.", MessageType.Error);
+                        }
+                    }
                 }
             }
         }
