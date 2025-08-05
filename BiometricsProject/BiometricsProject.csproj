@@ -123,6 +123,7 @@
     <Compile Include="attendance.Designer.cs">
       <DependentUpon>attendance.cs</DependentUpon>
     </Compile>
+    <None Include="backups\Program.cs.bck" />
     <Compile Include="capture.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -199,6 +200,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\11019419_touch_fingerprint_identification_identity_biometric_icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Resources\swuphinmared.ico" />
+    <Content Include="Resources\swuphinmared.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -48,7 +48,24 @@ namespace BiometricsProject
         private void verify_btn_Click(object sender, EventArgs e)
         {
             verify VeFrm = new verify();
-            //VeFrm.Verify(Template);
+
+            // Optionally pass the template if already captured
+            // VeFrm.Verify(Template); // <--- up to you if verify form needs it directly
+
+            VeFrm.Show(); // ← Add this
         }
+
+        private void attendance_btn_Click(object sender, EventArgs e)
+        {
+            attendance attForm = new attendance();
+            attForm.Show();
+        }
+
+
+        private void exit_btn_Click(object sender, EventArgs e)
+        {
+            Application.Exit();
+        }
+
     }
 }
